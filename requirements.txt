@@ -1,12 +1,12 @@
 streamlit==1.28.0
 
-# LangChain ecosystem
-langchain==0.2.16
-langchain-core==0.2.38
-langchain-community==0.2.7
+# LangChain ecosystem (updated to match google-genai integration)
+langchain==0.3.7
+langchain-core==0.3.13
+langchain-community==0.3.7
 langchain-google-genai==2.0.2
 
-# Google GenAI - correct range
+# Google GenAI
 google-generativeai>=0.8.0,<0.9.0
 
 # Vector DB
