@@ -16,6 +16,7 @@ chroma_db/
 
 # Uploaded files
 uploads/
+temp_uploads/
 
 # IDE
 .vscode/
