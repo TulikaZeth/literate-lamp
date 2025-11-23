@@ -55,7 +55,6 @@ class DocumentProcessor:
             ]
         )
         
-        # Initialize mimetypes
         mimetypes.init()
     
     def detect_file_type(self, file_path: str) -> str:
