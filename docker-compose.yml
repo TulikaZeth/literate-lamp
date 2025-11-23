@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  ragbot:
+    build: .
+    container_name: ragbot
+    ports:
+      - "8501:8501"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - CHAT_MODEL=gemini-2.5-flash
+      - EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - RETRIEVAL_K=8
+      - RERANKER_TOP_K=4
+      - USE_RERANKER=true
+      - CHUNK_SIZE=1000
+      - CHUNK_OVERLAP=200
+      - USE_OCR=true
+      - PERSIST_DIR=/app/chroma_db
+    volumes:
+      # Persist vector database
+      - ./chroma_db:/app/chroma_db
+      # Persist temp uploads
+      - ./temp_uploads:/app/temp_uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

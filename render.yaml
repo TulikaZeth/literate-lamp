@@ -1,14 +1,14 @@
 services:
   - type: web
     name: ragbot
-    env: python
+    runtime: docker
     region: oregon
     plan: free
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true"
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
+      - key: PORT
+        value: 8501
       - key: GOOGLE_API_KEY
         sync: false
       - key: CHAT_MODEL
@@ -28,4 +28,5 @@ services:
       - key: USE_OCR
         value: true
       - key: PERSIST_DIR
-        value: ./chroma_db
+        value: /app/chroma_db
+    healthCheckPath: /_stcore/health
