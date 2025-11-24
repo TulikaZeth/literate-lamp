@@ -9,24 +9,30 @@ langchain-core>=0.3.17,<0.4.0
 langchain-community==0.3.7
 langchain-google-genai==2.0.2
 langchain-huggingface==0.1.0
+
 # Google GenAI
 google-generativeai>=0.8.0,<0.9.0
+
 # Vector DB
 chromadb==0.4.22
 faiss-cpu==1.9.0.post1
-# ML + Embeddings
+
+# ML + Embeddings - UPDATED VERSIONS
 sentence-transformers==2.2.2
-transformers==4.35.0
-huggingface-hub>=0.16.4,<0.17
-tokenizers>=0.14,<0.15
+transformers>=4.36.0
+huggingface-hub>=0.23.0
+tokenizers>=0.15.0
+
 # File processing + OCR
 PyPDF2==3.0.1
 pdf2image==1.16.3
 Pillow==10.2.0
 pytesseract==0.3.10
 python-docx==1.1.0
+
 # MIME magic
 python-magic==0.4.27
+
 # Utilities
 python-dotenv==1.0.0
 requests==2.31.0
