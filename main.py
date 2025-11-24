@@ -80,17 +80,17 @@ async def startup_event():
 class QueryResponse(BaseModel):
     """Response model for queries."""
     answer: str
-    sources: List[dict]
+    sources: list
     metadata: dict
     documents_in_kb: int
 
 
-@app.post("/api/rag", response_model=QueryResponse)
+@app.post("/api/rag")
 async def multimodal_rag(
-    question: str = Form(..., description="Question to ask about documents"),
-    files: Optional[List[UploadFile]] = File(None, description="Documents to upload (PDF, images, txt, docx)"),
-    use_ocr: bool = Form(True, description="Enable OCR for images/scanned PDFs"),
-    clear_kb: bool = Form(False, description="Clear knowledge base before uploading new documents")
+    files: List[UploadFile] = File(default=[], description="Upload: PDF (.pdf), Images (.jpg, .jpeg, .png), Text (.txt, .md), Documents (.docx, .doc)"),
+    question: str = Form(default="", description="Question to ask about documents"),
+    use_ocr: bool = Form(default=True, description="Enable OCR for images/scanned PDFs"),
+    clear_kb: bool = Form(default=False, description="Clear knowledge base before uploading new documents")
 ):
     """
     **Multimodal RAG Endpoint - All-in-One**
@@ -129,6 +129,13 @@ async def multimodal_rag(
     """
     
     try:
+        # Validate: at least files or question must be provided
+        if not files and not question.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Please provide either 'files' to upload or 'question' to ask, or both."
+            )
+        
         # Step 1: Clear knowledge base if requested
         if clear_kb:
             vector_store.clear_vectorstore()
@@ -136,6 +143,9 @@ async def multimodal_rag(
         
         # Step 2: Process uploaded files if provided
         if files and len(files) > 0:
+            # Validate file types
+            ALLOWED_EXTENSIONS = {'.pdf', '.txt', '.md', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff'}
+            
             temp_dir = tempfile.mkdtemp()
             
             try:
@@ -143,6 +153,15 @@ async def multimodal_rag(
                 file_paths = []
                 for uploaded_file in files:
                     if uploaded_file.filename:  # Skip empty files
+                        file_ext = Path(uploaded_file.filename).suffix.lower()
+                        
+                        # Validate file extension
+                        if file_ext not in ALLOWED_EXTENSIONS:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Unsupported file type: {file_ext}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+                            )
+                        
                         file_path = Path(temp_dir) / uploaded_file.filename
                         with open(file_path, "wb") as f:
                             content = await uploaded_file.read()
