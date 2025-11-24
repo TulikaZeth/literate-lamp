@@ -43,38 +43,54 @@ rag_engine = None
 document_processor = None
 
 
+def get_vector_store():
+    """Lazy load vector store."""
+    global vector_store
+    if vector_store is None:
+        print("🔄 Loading vector store...")
+        vector_store = VectorStoreManager(
+            persist_directory=os.getenv("PERSIST_DIR", "./chroma_db"),
+            embedding_model=os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+        )
+    return vector_store
+
+
+def get_rag_engine():
+    """Lazy load RAG engine."""
+    global rag_engine
+    if rag_engine is None:
+        print("🔄 Loading RAG engine...")
+        rag_engine = RAGEngine(
+            vector_store=get_vector_store(),
+            model_name=os.getenv("CHAT_MODEL", "gemini-2.5-flash"),
+            retrieval_k=int(os.getenv("RETRIEVAL_K", "8")),
+            use_reranker=os.getenv("USE_RERANKER", "false").lower() == "true",  # Disable reranker to save memory
+            reranker_top_k=int(os.getenv("RERANKER_TOP_K", "4"))
+        )
+    return rag_engine
+
+
+def get_document_processor():
+    """Lazy load document processor."""
+    global document_processor
+    if document_processor is None:
+        print("🔄 Loading document processor...")
+        document_processor = DocumentProcessor(
+            chunk_size=int(os.getenv("CHUNK_SIZE", "1000")),
+            chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "200")),
+            use_ocr=os.getenv("USE_OCR", "false").lower() == "true"  # Disable OCR to save memory
+        )
+    return document_processor
+
+
 @app.on_event("startup")
 async def startup_event():
-    """Initialize components on startup."""
-    global vector_store, rag_engine, document_processor
-    
+    """Minimal startup - lazy load components on first use."""
     # Check API key
     if not os.getenv("GOOGLE_API_KEY"):
         raise RuntimeError("GOOGLE_API_KEY not set in environment")
     
-    # Initialize vector store
-    vector_store = VectorStoreManager(
-        persist_directory=os.getenv("PERSIST_DIR", "./chroma_db"),
-        embedding_model=os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-    )
-    
-    # Initialize RAG engine
-    rag_engine = RAGEngine(
-        vector_store=vector_store,
-        model_name=os.getenv("CHAT_MODEL", "gemini-2.5-flash"),
-        retrieval_k=int(os.getenv("RETRIEVAL_K", "8")),
-        use_reranker=os.getenv("USE_RERANKER", "true").lower() == "true",
-        reranker_top_k=int(os.getenv("RERANKER_TOP_K", "4"))
-    )
-    
-    # Initialize document processor
-    document_processor = DocumentProcessor(
-        chunk_size=int(os.getenv("CHUNK_SIZE", "1000")),
-        chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "200")),
-        use_ocr=os.getenv("USE_OCR", "true").lower() == "true"
-    )
-    
-    print("✅ RAG Bot initialized successfully")
+    print("✅ RAG Bot ready (components will load on first use)")
 
 
 class QueryResponse(BaseModel):
@@ -138,7 +154,7 @@ async def multimodal_rag(
         
         # Step 1: Clear knowledge base if requested
         if clear_kb:
-            vector_store.clear_vectorstore()
+            get_vector_store().clear_vectorstore()
             print("🗑️ Knowledge base cleared")
         
         # Step 2: Process uploaded files if provided
@@ -170,11 +186,12 @@ async def multimodal_rag(
                 
                 # Process documents
                 if file_paths:
-                    document_processor.use_ocr = use_ocr
-                    chunks = document_processor.process_multiple_documents(file_paths)
+                    processor = get_document_processor()
+                    processor.use_ocr = use_ocr
+                    chunks = processor.process_multiple_documents(file_paths)
                     
                     if chunks:
-                        vector_store.add_documents(chunks)
+                        get_vector_store().add_documents(chunks)
                         print(f"✅ Processed {len(file_paths)} files into {len(chunks)} chunks")
                     else:
                         raise HTTPException(status_code=400, detail="No content extracted from files")
@@ -186,7 +203,7 @@ async def multimodal_rag(
         # Step 3: Answer question if provided
         if question and question.strip():
             # Check if we have documents
-            doc_count = vector_store.get_document_count()
+            doc_count = get_vector_store().get_document_count()
             if doc_count == 0:
                 raise HTTPException(
                     status_code=400,
@@ -194,7 +211,7 @@ async def multimodal_rag(
                 )
             
             # Query RAG engine
-            result = rag_engine.query(question)
+            result = get_rag_engine().query(question)
             
             # Format sources
             sources = []
@@ -216,7 +233,7 @@ async def multimodal_rag(
         
         else:
             # No question provided - just return upload confirmation
-            doc_count = vector_store.get_document_count()
+            doc_count = get_vector_store().get_document_count()
             return QueryResponse(
                 answer="Documents uploaded successfully. No question provided.",
                 sources=[],
@@ -233,7 +250,7 @@ async def multimodal_rag(
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
-    doc_count = vector_store.get_document_count() if vector_store else 0
+    doc_count = get_vector_store().get_document_count() if vector_store else 0
     return {
         "status": "healthy",
         "documents": doc_count,
@@ -246,7 +263,7 @@ async def health_check():
 async def get_stats():
     """Get knowledge base statistics."""
     return {
-        "total_chunks": vector_store.get_document_count() if vector_store else 0,
+        "total_chunks": get_vector_store().get_document_count() if vector_store else 0,
         "embedding_model": os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
         "chat_model": os.getenv("CHAT_MODEL", "gemini-2.5-flash"),
         "retrieval_k": int(os.getenv("RETRIEVAL_K", "8")),
@@ -259,7 +276,7 @@ async def get_stats():
 async def clear_knowledge_base():
     """Clear all documents from knowledge base."""
     try:
-        vector_store.clear_vectorstore()
+        get_vector_store().clear_vectorstore()
         return {"status": "success", "message": "Knowledge base cleared"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -16,17 +16,17 @@ services:
       - key: EMBEDDING_MODEL
         value: sentence-transformers/all-MiniLM-L6-v2
       - key: RETRIEVAL_K
-        value: 8
+        value: 6
       - key: RERANKER_TOP_K
-        value: 4
+        value: 3
       - key: USE_RERANKER
-        value: true
+        value: "false"
       - key: CHUNK_SIZE
-        value: 1000
+        value: 800
       - key: CHUNK_OVERLAP
-        value: 200
+        value: 150
       - key: USE_OCR
-        value: true
+        value: "false"
       - key: PERSIST_DIR
         value: /app/chroma_db
     healthCheckPath: /api/health

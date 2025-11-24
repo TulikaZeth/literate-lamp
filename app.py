@@ -41,7 +41,7 @@ def initialize_system():
         )
 
     if st.session_state.rag_engine is None:
-        st.session_state.rag_engine = RAGEngine(
+        st.session_state.rag_engine = RAGEngine( 
             vector_store=st.session_state.vector_store,
             model_name=os.getenv("CHAT_MODEL", "gemini-1.5-pro"),
             retrieval_k=int(os.getenv("RETRIEVAL_K", "8")),
@@ -99,7 +99,7 @@ def main():
         st.stop()
     
     # Initialize system
-    initialize_system()
+    initialize_system() 
     
     # Sidebar for document management
     with st.sidebar:
