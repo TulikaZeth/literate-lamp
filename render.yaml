@@ -8,7 +8,7 @@ services:
     dockerContext: .
     envVars:
       - key: PORT
-        value: 8501
+        value: 8000
       - key: GOOGLE_API_KEY
         sync: false
       - key: CHAT_MODEL
@@ -29,4 +29,4 @@ services:
         value: true
       - key: PERSIST_DIR
         value: /app/chroma_db
-    healthCheckPath: /_stcore/health
+    healthCheckPath: /api/health
