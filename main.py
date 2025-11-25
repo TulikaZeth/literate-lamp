@@ -50,7 +50,7 @@ def get_vector_store():
         print("🔄 Loading vector store...")
         vector_store = VectorStoreManager(
             persist_directory=os.getenv("PERSIST_DIR", "./chroma_db"),
-            embedding_model=os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+            embedding_model=os.getenv("EMBEDDING_MODEL", "models/text-embedding-004")
         )
     return vector_store
 
@@ -264,7 +264,7 @@ async def get_stats():
     """Get knowledge base statistics."""
     return {
         "total_chunks": get_vector_store().get_document_count() if vector_store else 0,
-        "embedding_model": os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
+        "embedding_model": os.getenv("EMBEDDING_MODEL", "models/text-embedding-004"),
         "chat_model": os.getenv("CHAT_MODEL", "gemini-2.5-flash"),
         "retrieval_k": int(os.getenv("RETRIEVAL_K", "8")),
         "reranker_top_k": int(os.getenv("RERANKER_TOP_K", "4")),

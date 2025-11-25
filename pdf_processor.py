@@ -5,11 +5,19 @@ from typing import List, Optional, Tuple
 from pathlib import Path
 from PyPDF2 import PdfReader
 from PIL import Image
-import pytesseract
-from pdf2image import convert_from_path
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from docx import Document as DocxDocument
+
+# Optional OCR imports (only if installed)
+try:
+    import pytesseract
+    from pdf2image import convert_from_path
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+    pytesseract = None
+    convert_from_path = None
 
 
 class DocumentProcessor:
@@ -33,11 +41,15 @@ class DocumentProcessor:
         """
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        self.use_ocr = use_ocr
+        self.use_ocr = use_ocr and OCR_AVAILABLE  # Disable if OCR not available
         
         # Configure Tesseract if custom path provided
-        if tesseract_path:
+        if tesseract_path and OCR_AVAILABLE:
             pytesseract.pytesseract.tesseract_cmd = tesseract_path
+        
+        # Warn if OCR requested but not available
+        if use_ocr and not OCR_AVAILABLE:
+            print("⚠️  OCR disabled: pytesseract/pdf2image not installed")
         
         # Advanced text splitter with semantic separators
         self.text_splitter = RecursiveCharacterTextSplitter(

@@ -6,7 +6,7 @@ Manages ChromaDB vector store for document embeddings and retrieval.
 import os
 from typing import List, Optional
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 
 
@@ -17,7 +17,7 @@ class VectorStoreManager:
         self,
         persist_directory: str = "./chroma_db",
         collection_name: str = "ragbot_docs",
-        embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+        embedding_model: str = "models/text-embedding-004"
     ):
         """
         Initialize vector store manager.
@@ -30,9 +30,10 @@ class VectorStoreManager:
         self.persist_directory = persist_directory
         self.collection_name = collection_name
         
-        # Initialize embeddings with Google Gemini
-        self.embeddings = HuggingFaceEmbeddings(
-        model_name=embedding_model
+        # Initialize embeddings with Google Gemini (no local downloads!)
+        self.embeddings = GoogleGenerativeAIEmbeddings(
+            model=embedding_model,
+            google_api_key=os.getenv("GOOGLE_API_KEY")
         )
 
         # Initialize or load vector store

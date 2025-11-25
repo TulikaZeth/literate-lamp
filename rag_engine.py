@@ -9,7 +9,14 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.documents import Document
 from vector_store import VectorStoreManager
-from reranker import Reranker
+
+# Optional reranker import (only if sentence-transformers installed)
+try:
+    from reranker import Reranker
+    RERANKER_AVAILABLE = True
+except ImportError:
+    RERANKER_AVAILABLE = False
+    Reranker = None
 
 class RAGEngine:
     """Enhanced RAG engine with reranking and detailed citations."""
@@ -46,15 +53,18 @@ class RAGEngine:
             google_api_key=os.getenv("GOOGLE_API_KEY")
         )
         
-        # Initialize reranker if enabled
+        # Initialize reranker if enabled and available
         self.reranker = None
-        if use_reranker:
+        if use_reranker and RERANKER_AVAILABLE:
             try:
                 self.reranker = Reranker(top_k=reranker_top_k)
                 print("✓ Reranker enabled for improved retrieval")
             except Exception as e:
                 print(f"⚠ Reranker initialization failed: {e}. Proceeding without reranking.")
                 self.use_reranker = False
+        elif use_reranker and not RERANKER_AVAILABLE:
+            print("⚠️  Reranker disabled: sentence-transformers not installed")
+            self.use_reranker = False
         
         # Create enhanced prompt with citation instructions
         self.prompt_template = """You are a knowledgeable research assistant that provides accurate, well-cited answers based on provided documents.

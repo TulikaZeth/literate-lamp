@@ -14,9 +14,9 @@ services:
       - key: CHAT_MODEL
         value: gemini-2.5-flash
       - key: EMBEDDING_MODEL
-        value: sentence-transformers/all-MiniLM-L6-v2
+        value: models/text-embedding-004
       - key: RETRIEVAL_K
-        value: 6
+        value: 8
       - key: RERANKER_TOP_K
         value: 3
       - key: USE_RERANKER
