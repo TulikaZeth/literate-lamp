@@ -56,6 +56,13 @@ class VectorStoreManager:
                 embedding_function=self.embeddings,
                 collection_name=self.collection_name
             )
+        
+        # Mark that we're using Gemini embeddings (768-dim)
+        migration_flag = os.path.join(self.persist_directory, ".migrated_to_gemini")
+        if not os.path.exists(migration_flag):
+            os.makedirs(self.persist_directory, exist_ok=True)
+            with open(migration_flag, "w") as f:
+                f.write("768")
     
     def add_documents(self, documents: List[Document]) -> List[str]:
         """

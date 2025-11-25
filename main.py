@@ -90,6 +90,16 @@ async def startup_event():
     if not os.getenv("GOOGLE_API_KEY"):
         raise RuntimeError("GOOGLE_API_KEY not set in environment")
     
+    # Auto-migrate from old embeddings if needed
+    db_path = "./chroma_db"
+    migration_flag = os.path.join(db_path, ".migrated_to_gemini")
+    
+    if os.path.exists(db_path) and not os.path.exists(migration_flag):
+        print("⚠️  Detected old ChromaDB with incompatible embeddings (384-dim)")
+        print("🔄 Clearing database to use new Google Gemini embeddings (768-dim)...")
+        shutil.rmtree(db_path)
+        print("✅ Old database cleared. Please re-upload your documents.")
+    
     print("✅ RAG Bot ready (components will load on first use)")
 
 
