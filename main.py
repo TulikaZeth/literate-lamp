@@ -8,6 +8,7 @@ import tempfile
 import shutil
 from pathlib import Path
 from typing import List, Optional, Union
+from datetime import datetime
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -342,44 +343,93 @@ class NotebookAnalysisResponse(BaseModel):
     """Response model for notebook analysis."""
     title: str
     summary: str
-    qna: List[Dict[str, str]]
+    qna: List[dict]
+    key_points: Optional[List[str]] = None
+    references: Optional[List[dict]] = None
+    structure_table: Optional[dict] = None
+    metadata: dict
+
+
+class NotebookSummaryResponse(BaseModel):
+    """Response model for notebook summary only."""
+    title: str
+    summary: str
+    key_points: List[str]
+    metadata: dict
+
+
+class NotebookQnAResponse(BaseModel):
+    """Response model for notebook Q&A only."""
+    title: str
+    qna: List[dict]
     metadata: dict
 
 
 @app.post("/api/notebook/analyze", response_model=NotebookAnalysisResponse)
 async def analyze_notebook(
-    notebook: UploadFile = File(..., description="Jupyter notebook file (.ipynb)")
+    notebook: UploadFile = File(..., description="Jupyter notebook file (.ipynb)"),
+    num_questions: int = Form(default=5, description="Number of Q&A pairs (1-20)", ge=1, le=20),
+    summary_length: int = Form(default=300, description="Max summary length in words (50-1000)", ge=50, le=1000)
 ):
     """
-    **Analyze Jupyter Notebook - Extract Title, Summary, and Q&A**
+    **Analyze Jupyter Notebook - Complete Analysis with Structured Output**
     
     Upload a Jupyter notebook (.ipynb) to automatically extract:
-    - **Title**: Extracted from first markdown heading or generated
-    - **Summary**: AI-generated concise summary of the notebook's content
-    - **Q&A**: 5 question-answer pairs covering key concepts
+    - **Title**: Extracted from first markdown heading or auto-generated
+    - **Summary**: AI-generated concise summary of the notebook
+    - **Q&A**: Question-answer pairs covering key concepts (customizable)
+    - **Key Points**: Bullet points of main takeaways
+    - **References**: Tables, figures, and external links found in the notebook
+    - **Structure Table**: Cell-by-cell breakdown (markdown/code)
     
-    **Use Case:**
-    Perfect for creating documentation, study guides, or quick overviews of notebooks.
+    **Parameters:**
+    - `notebook`: The .ipynb file to analyze
+    - `num_questions`: How many Q&A pairs to generate (default: 5, range: 1-20)
+    - `summary_length`: Maximum words in summary (default: 300, range: 50-1000)
+    
+    **Use Cases:**
+    - Create comprehensive documentation from notebooks
+    - Generate study guides with Q&A
+    - Extract structured summaries for reports
+    - Catalog notebook contents with metadata
     
     **Example:**
-    ```
-    POST /api/notebook/analyze
-    notebook: my_analysis.ipynb
+    ```bash
+    curl -X POST http://localhost:8000/api/notebook/analyze \
+      -F "notebook=@data_analysis.ipynb" \
+      -F "num_questions=10" \
+      -F "summary_length=500"
     ```
     
     **Response:**
     ```json
     {
       "title": "Data Analysis with Pandas",
-      "summary": "This notebook demonstrates...",
+      "summary": "This notebook demonstrates data cleaning...",
       "qna": [
         {
           "question": "What library is used for data manipulation?",
-          "answer": "Pandas is used for data manipulation..."
+          "answer": "Pandas is the primary library used..."
         }
       ],
+      "key_points": [
+        "Data loading from CSV using pd.read_csv()",
+        "Missing value handling with fillna() and dropna()"
+      ],
+      "references": [
+        {
+          "type": "table",
+          "title": "DataFrame Summary Statistics",
+          "cell_number": 5
+        }
+      ],
+      "structure_table": {
+        "total_cells": 25,
+        "markdown": 10,
+        "code": 15
+      },
       "metadata": {
-        "filename": "my_analysis.ipynb",
+        "filename": "data_analysis.ipynb",
         "num_markdown_cells": 10,
         "num_code_cells": 15
       }
@@ -402,9 +452,14 @@ async def analyze_notebook(
                 content = await notebook.read()
                 f.write(content)
             
-            # Process notebook
+            # Process notebook with customizable parameters
             processor = get_notebook_processor()
-            result = processor.process_notebook(str(temp_path))
+            result = processor.process_notebook(
+                str(temp_path),
+                num_questions=num_questions,
+                summary_max_length=summary_length,
+                include_structure=True
+            )
             
             return NotebookAnalysisResponse(**result)
         
@@ -418,25 +473,41 @@ async def analyze_notebook(
         raise HTTPException(status_code=500, detail=f"Error analyzing notebook: {str(e)}")
 
 
-@app.post("/api/notebook/custom-qna")
-async def analyze_notebook_custom(
+@app.post("/api/notebook/summary", response_model=NotebookSummaryResponse)
+async def get_notebook_summary(
     notebook: UploadFile = File(..., description="Jupyter notebook file (.ipynb)"),
-    num_questions: int = Form(default=5, description="Number of Q&A pairs to generate (1-20)", ge=1, le=20),
     summary_length: int = Form(default=300, description="Maximum summary length in words (50-1000)", ge=50, le=1000)
 ):
     """
-    **Analyze Notebook with Custom Parameters**
+    **Get Notebook Summary Only - Quick Overview**
     
-    Similar to `/api/notebook/analyze` but allows customization of:
-    - Number of Q&A pairs (1-20)
-    - Summary length (50-1000 words)
+    Extract just the title, summary, and key points from a notebook.
+    Perfect for quick previews or documentation purposes.
+    
+    **Use Case:**
+    - Create quick overviews for a collection of notebooks
+    - Generate documentation summaries
+    - Preview notebook content before full analysis
     
     **Example:**
     ```
-    POST /api/notebook/custom-qna
-    notebook: my_notebook.ipynb
-    num_questions: 10
-    summary_length: 500
+    POST /api/notebook/summary
+    notebook: analysis.ipynb
+    summary_length: 200
+    ```
+    
+    **Response:**
+    ```json
+    {
+      "title": "Data Analysis Tutorial",
+      "summary": "This notebook demonstrates...",
+      "key_points": [
+        "Introduction to pandas DataFrame operations",
+        "Data cleaning and preprocessing techniques",
+        "Visualization using matplotlib and seaborn"
+      ],
+      "metadata": {...}
+    }
     ```
     """
     try:
@@ -454,13 +525,24 @@ async def analyze_notebook_custom(
                 f.write(content)
             
             processor = get_notebook_processor()
-            result = processor.process_notebook(
-                str(temp_path),
-                num_questions=num_questions,
-                summary_max_length=summary_length
-            )
+            notebook_content = processor.parse_notebook(str(temp_path))
             
-            return NotebookAnalysisResponse(**result)
+            # Generate only summary components
+            title = processor.extract_title(notebook_content)
+            summary = processor.generate_summary(notebook_content, summary_length)
+            key_points = processor.extract_key_points(notebook_content)
+            
+            return NotebookSummaryResponse(
+                title=title,
+                summary=summary,
+                key_points=key_points,
+                metadata={
+                    "filename": notebook_content['filename'],
+                    "num_markdown_cells": len(notebook_content['markdown_cells']),
+                    "num_code_cells": len(notebook_content['code_cells']),
+                    "processed_at": datetime.now().isoformat()
+                }
+            )
         
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -468,7 +550,91 @@ async def analyze_notebook_custom(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error analyzing notebook: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating summary: {str(e)}")
+
+
+@app.post("/api/notebook/qna", response_model=NotebookQnAResponse)
+async def get_notebook_qna(
+    notebook: UploadFile = File(..., description="Jupyter notebook file (.ipynb)"),
+    num_questions: int = Form(default=5, description="Number of Q&A pairs to generate (1-20)", ge=1, le=20)
+):
+    """
+    **Get Notebook Q&A Only - Study Guide Generator**
+    
+    Generate only question-answer pairs from a notebook.
+    Perfect for creating study guides or testing comprehension.
+    
+    **Use Case:**
+    - Create quiz questions for educational content
+    - Generate study materials
+    - Test understanding of notebook concepts
+    - Create FAQ sections
+    
+    **Example:**
+    ```
+    POST /api/notebook/qna
+    notebook: machine_learning.ipynb
+    num_questions: 10
+    ```
+    
+    **Response:**
+    ```json
+    {
+      "title": "Machine Learning Tutorial",
+      "qna": [
+        {
+          "question": "What algorithm is used for classification?",
+          "answer": "The notebook uses Random Forest classifier..."
+        },
+        {
+          "question": "How is model performance evaluated?",
+          "answer": "Performance is evaluated using accuracy, precision, and recall metrics..."
+        }
+      ],
+      "metadata": {...}
+    }
+    ```
+    """
+    try:
+        if not notebook.filename.endswith('.ipynb'):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid file type. Please upload a Jupyter notebook (.ipynb)"
+            )
+        
+        temp_dir = tempfile.mkdtemp()
+        try:
+            temp_path = Path(temp_dir) / notebook.filename
+            with open(temp_path, "wb") as f:
+                content = await notebook.read()
+                f.write(content)
+            
+            processor = get_notebook_processor()
+            notebook_content = processor.parse_notebook(str(temp_path))
+            
+            # Generate only Q&A
+            title = processor.extract_title(notebook_content)
+            qna = processor.generate_qna(notebook_content, num_questions)
+            
+            return NotebookQnAResponse(
+                title=title,
+                qna=qna,
+                metadata={
+                    "filename": notebook_content['filename'],
+                    "num_questions": len(qna),
+                    "num_markdown_cells": len(notebook_content['markdown_cells']),
+                    "num_code_cells": len(notebook_content['code_cells']),
+                    "processed_at": datetime.now().isoformat()
+                }
+            )
+        
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating Q&A: {str(e)}")
 
 
 if __name__ == "__main__":

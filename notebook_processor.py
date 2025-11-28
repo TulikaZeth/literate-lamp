@@ -5,10 +5,11 @@ Notebook Processor - Extract summary, Q&A, and title from Jupyter notebooks
 import os
 import json
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
+from datetime import datetime
 
 
 class NotebookProcessor:
@@ -226,22 +227,193 @@ Provide only the Q&A pairs in the specified format.""")
         
         return qna_pairs[:num_questions]  # Ensure we return exactly num_questions
     
+    def extract_key_points(self, notebook_content: Dict, num_points: int = 5) -> List[str]:
+        """
+        Extract key points/takeaways from the notebook.
+        
+        Args:
+            notebook_content: Parsed notebook dict
+            num_points: Number of key points to extract
+            
+        Returns:
+            List of key points
+        """
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert at analyzing technical content and extracting key insights.
+            Extract {num_points} key points/takeaways from this notebook that:
+            - Highlight the most important concepts or findings
+            - Are concise (1-2 sentences each)
+            - Are actionable or memorable
+            - Cover different aspects of the notebook
+            
+            Format as a simple numbered list:
+            1. [point]
+            2. [point]
+            etc."""),
+            ("human", """Extract key points from this notebook:
+
+Title: {title}
+
+Content:
+{content}
+
+Provide exactly {num_points} key points.""")
+        ])
+        
+        content = notebook_content['all_text'][:4000]
+        chain = prompt | self.llm
+        response = chain.invoke({
+            "title": self.extract_title(notebook_content),
+            "content": content,
+            "num_points": num_points
+        })
+        
+        # Parse numbered list
+        points = []
+        for line in response.content.strip().split('\n'):
+            # Remove numbering and clean up
+            match = re.match(r'^\d+\.\s*(.+)$', line.strip())
+            if match:
+                points.append(match.group(1))
+        
+        return points[:num_points]
+    
+    def extract_references(self, notebook_content: Dict) -> List[Dict[str, str]]:
+        """
+        Extract libraries, tools, and external references from the notebook.
+        
+        Args:
+            notebook_content: Parsed notebook dict
+            
+        Returns:
+            List of dicts with 'name', 'type', and 'description'
+        """
+        # Extract imports from code cells
+        imports = set()
+        for code in notebook_content['code_cells']:
+            # Find import statements
+            import_matches = re.findall(r'^import\s+(\w+)', code, re.MULTILINE)
+            from_matches = re.findall(r'^from\s+(\w+)', code, re.MULTILINE)
+            imports.update(import_matches)
+            imports.update(from_matches)
+        
+        # Extract URLs from markdown
+        urls = []
+        for markdown in notebook_content['markdown_cells']:
+            url_matches = re.findall(r'\[([^\]]+)\]\(([^)]+)\)', markdown)
+            urls.extend(url_matches)
+        
+        references = []
+        
+        # Add libraries
+        for lib in sorted(imports):
+            references.append({
+                "name": lib,
+                "type": "library",
+                "description": f"Python library used in the notebook"
+            })
+        
+        # Add URL references
+        for title, url in urls:
+            references.append({
+                "name": title,
+                "type": "external_link",
+                "description": url
+            })
+        
+        return references
+    
+    def generate_structured_table(self, notebook_content: Dict) -> Dict[str, Any]:
+        """
+        Generate a structured table summarizing notebook sections.
+        
+        Args:
+            notebook_content: Parsed notebook dict
+            
+        Returns:
+            Dict with table structure
+        """
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert at analyzing notebooks and creating structured summaries.
+            Analyze the notebook and create a table that breaks down the content into sections.
+            
+            For each section, identify:
+            - Section name/title
+            - Purpose (what it does)
+            - Key techniques/methods used
+            - Output/result (if applicable)
+            
+            Format as JSON array:
+            [
+              {
+                "section": "Section name",
+                "purpose": "What this section does",
+                "techniques": "Key methods used",
+                "output": "Result or finding"
+              }
+            ]
+            
+            Provide only the JSON array, nothing else."""),
+            ("human", """Analyze this notebook and create a structured table:
+
+Title: {title}
+
+Content:
+{content}
+
+Provide the JSON array.""")
+        ])
+        
+        content = notebook_content['all_text'][:4000]
+        chain = prompt | self.llm
+        response = chain.invoke({
+            "title": self.extract_title(notebook_content),
+            "content": content
+        })
+        
+        try:
+            # Try to parse JSON from response
+            import json
+            # Extract JSON array from response
+            json_match = re.search(r'\[.*\]', response.content, re.DOTALL)
+            if json_match:
+                table_data = json.loads(json_match.group())
+                return {
+                    "columns": ["Section", "Purpose", "Techniques", "Output"],
+                    "rows": table_data
+                }
+        except:
+            pass
+        
+        # Fallback: simple structure
+        return {
+            "columns": ["Section", "Description"],
+            "rows": [
+                {
+                    "section": "Overview",
+                    "description": "Analysis of notebook structure"
+                }
+            ]
+        }
+    
     def process_notebook(
         self, 
         notebook_path: str, 
         num_questions: int = 5,
-        summary_max_length: int = 300
+        summary_max_length: int = 300,
+        include_structure: bool = True
     ) -> Dict:
         """
-        Process notebook to extract title, generate summary and Q&A.
+        Process notebook to extract title, generate summary, Q&A, and structured analysis.
         
         Args:
             notebook_path: Path to .ipynb file
             num_questions: Number of Q&A pairs to generate
             summary_max_length: Maximum summary length in words
+            include_structure: Include structured table and references
             
         Returns:
-            Dict with title, summary, qna, and metadata
+            Dict with title, summary, qna, key_points, references, table, and metadata
         """
         # Parse notebook
         notebook_content = self.parse_notebook(notebook_path)
@@ -251,7 +423,7 @@ Provide only the Q&A pairs in the specified format.""")
         summary = self.generate_summary(notebook_content, summary_max_length)
         qna = self.generate_qna(notebook_content, num_questions)
         
-        return {
+        result = {
             "title": title,
             "summary": summary,
             "qna": qna,
@@ -259,6 +431,15 @@ Provide only the Q&A pairs in the specified format.""")
                 "filename": notebook_content['filename'],
                 "num_markdown_cells": len(notebook_content['markdown_cells']),
                 "num_code_cells": len(notebook_content['code_cells']),
-                "total_chars": len(notebook_content['all_text'])
+                "total_chars": len(notebook_content['all_text']),
+                "processed_at": datetime.now().isoformat()
             }
         }
+        
+        # Add structured analysis if requested
+        if include_structure:
+            result["key_points"] = self.extract_key_points(notebook_content)
+            result["references"] = self.extract_references(notebook_content)
+            result["structure_table"] = self.generate_structured_table(notebook_content)
+        
+        return result
