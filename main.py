@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from pdf_processor import DocumentProcessor
 from vector_store import VectorStoreManager
 from rag_engine import RAGEngine
+from notebook_processor import NotebookProcessor
 
 # Load environment
 load_dotenv()
@@ -41,6 +42,7 @@ app.add_middleware(
 vector_store = None
 rag_engine = None
 document_processor = None
+notebook_processor = None
 
 
 def get_vector_store():
@@ -81,6 +83,17 @@ def get_document_processor():
             use_ocr=os.getenv("USE_OCR", "false").lower() == "true"  # Disable OCR to save memory
         )
     return document_processor
+
+
+def get_notebook_processor():
+    """Lazy load notebook processor."""
+    global notebook_processor
+    if notebook_processor is None:
+        print("🔄 Loading notebook processor...")
+        notebook_processor = NotebookProcessor(
+            model_name=os.getenv("CHAT_MODEL", "gemini-2.5-flash")
+        )
+    return notebook_processor
 
 
 @app.on_event("startup")
@@ -290,6 +303,172 @@ async def clear_knowledge_base():
         return {"status": "success", "message": "Knowledge base cleared"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/reset-chroma")
+async def reset_chroma():
+    """
+    Reset ChromaDB to fix dimension mismatch.
+    Use this if you get 'expecting embedding with dimension of 384, got 768' error.
+    """
+    try:
+        db_path = os.getenv("PERSIST_DIR", "./chroma_db")
+        if os.path.exists(db_path):
+            shutil.rmtree(db_path)
+            
+            # Reset global instance
+            global vector_store
+            vector_store = None
+            
+            # Mark as migrated
+            os.makedirs(db_path, exist_ok=True)
+            with open(os.path.join(db_path, ".migrated_to_gemini"), "w") as f:
+                f.write("Migrated to Google Gemini embeddings (768-dim)")
+            
+            return {
+                "status": "success",
+                "message": "ChromaDB reset successfully. Please re-upload your documents."
+            }
+        else:
+            return {
+                "status": "info",
+                "message": "ChromaDB directory doesn't exist. Nothing to reset."
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error resetting ChromaDB: {str(e)}")
+
+
+class NotebookAnalysisResponse(BaseModel):
+    """Response model for notebook analysis."""
+    title: str
+    summary: str
+    qna: List[Dict[str, str]]
+    metadata: dict
+
+
+@app.post("/api/notebook/analyze", response_model=NotebookAnalysisResponse)
+async def analyze_notebook(
+    notebook: UploadFile = File(..., description="Jupyter notebook file (.ipynb)")
+):
+    """
+    **Analyze Jupyter Notebook - Extract Title, Summary, and Q&A**
+    
+    Upload a Jupyter notebook (.ipynb) to automatically extract:
+    - **Title**: Extracted from first markdown heading or generated
+    - **Summary**: AI-generated concise summary of the notebook's content
+    - **Q&A**: 5 question-answer pairs covering key concepts
+    
+    **Use Case:**
+    Perfect for creating documentation, study guides, or quick overviews of notebooks.
+    
+    **Example:**
+    ```
+    POST /api/notebook/analyze
+    notebook: my_analysis.ipynb
+    ```
+    
+    **Response:**
+    ```json
+    {
+      "title": "Data Analysis with Pandas",
+      "summary": "This notebook demonstrates...",
+      "qna": [
+        {
+          "question": "What library is used for data manipulation?",
+          "answer": "Pandas is used for data manipulation..."
+        }
+      ],
+      "metadata": {
+        "filename": "my_analysis.ipynb",
+        "num_markdown_cells": 10,
+        "num_code_cells": 15
+      }
+    }
+    ```
+    """
+    try:
+        # Validate file extension
+        if not notebook.filename.endswith('.ipynb'):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid file type. Please upload a Jupyter notebook (.ipynb)"
+            )
+        
+        # Save to temp file
+        temp_dir = tempfile.mkdtemp()
+        try:
+            temp_path = Path(temp_dir) / notebook.filename
+            with open(temp_path, "wb") as f:
+                content = await notebook.read()
+                f.write(content)
+            
+            # Process notebook
+            processor = get_notebook_processor()
+            result = processor.process_notebook(str(temp_path))
+            
+            return NotebookAnalysisResponse(**result)
+        
+        finally:
+            # Cleanup
+            shutil.rmtree(temp_dir, ignore_errors=True)
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing notebook: {str(e)}")
+
+
+@app.post("/api/notebook/custom-qna")
+async def analyze_notebook_custom(
+    notebook: UploadFile = File(..., description="Jupyter notebook file (.ipynb)"),
+    num_questions: int = Form(default=5, description="Number of Q&A pairs to generate (1-20)", ge=1, le=20),
+    summary_length: int = Form(default=300, description="Maximum summary length in words (50-1000)", ge=50, le=1000)
+):
+    """
+    **Analyze Notebook with Custom Parameters**
+    
+    Similar to `/api/notebook/analyze` but allows customization of:
+    - Number of Q&A pairs (1-20)
+    - Summary length (50-1000 words)
+    
+    **Example:**
+    ```
+    POST /api/notebook/custom-qna
+    notebook: my_notebook.ipynb
+    num_questions: 10
+    summary_length: 500
+    ```
+    """
+    try:
+        if not notebook.filename.endswith('.ipynb'):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid file type. Please upload a Jupyter notebook (.ipynb)"
+            )
+        
+        temp_dir = tempfile.mkdtemp()
+        try:
+            temp_path = Path(temp_dir) / notebook.filename
+            with open(temp_path, "wb") as f:
+                content = await notebook.read()
+                f.write(content)
+            
+            processor = get_notebook_processor()
+            result = processor.process_notebook(
+                str(temp_path),
+                num_questions=num_questions,
+                summary_max_length=summary_length
+            )
+            
+            return NotebookAnalysisResponse(**result)
+        
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing notebook: {str(e)}")
 
 
 if __name__ == "__main__":
