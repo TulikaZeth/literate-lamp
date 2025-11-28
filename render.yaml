@@ -11,22 +11,29 @@ services:
         value: 8000
       - key: GOOGLE_API_KEY
         sync: false
+      # LLM Configuration
       - key: CHAT_MODEL
         value: gemini-2.5-flash
       - key: EMBEDDING_MODEL
         value: models/text-embedding-004
+      # RAG Configuration
       - key: RETRIEVAL_K
         value: 8
-      - key: RERANKER_TOP_K
-        value: 3
-      - key: USE_RERANKER
-        value: "false"
       - key: CHUNK_SIZE
         value: 800
       - key: CHUNK_OVERLAP
         value: 150
+      # Memory Optimization (disabled for cloud)
+      - key: USE_RERANKER
+        value: "false"
       - key: USE_OCR
         value: "false"
+      # Notebook Analysis Configuration
+      - key: MAX_QUESTIONS
+        value: 10
+      - key: MAX_SUMMARY_LENGTH
+        value: 500
+      # Storage
       - key: PERSIST_DIR
         value: /app/chroma_db
     healthCheckPath: /api/health

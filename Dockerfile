@@ -1,12 +1,9 @@
 FROM python:3.11-slim
 
-# Install system dependencies
+# Install system dependencies (minimal for lightweight deployment)
 RUN apt-get update && apt-get install -y \
-    tesseract-ocr \
-    tesseract-ocr-eng \
-    poppler-utils \
-    libmagic1 \
     curl \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -19,15 +16,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create directories
-RUN mkdir -p /app/chroma_db /app/temp_uploads
+# Create directories for persistent storage and temp files
+RUN mkdir -p /app/chroma_db /app/temp_uploads /app/notebooks
 
-# Expose Streamlit port
-EXPOSE 8501
+# Expose FastAPI port
+EXPOSE 8000
 
-# Health check
+# Health check for FastAPI
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+    CMD curl --fail http://localhost:${PORT:-8000}/api/health || exit 1
 
 # Run FastAPI with Uvicorn
 CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
