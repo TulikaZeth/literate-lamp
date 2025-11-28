@@ -29,11 +29,9 @@ chromadb==0.4.22
 # -------------------------------
 sentence-transformers==2.2.2
 
-# FIXED: upgraded to support tokenizers 0.15.x
+# Compatible versions for transformers + tokenizers
 transformers==4.46.1
-
-# Required by latest transformers & Chroma
-tokenizers==0.15.2
+tokenizers>=0.20,<0.21
 
 huggingface-hub>=0.23.0
 torch==2.0.1
