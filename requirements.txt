@@ -1,35 +1,53 @@
+# -------------------------------
 # FastAPI for API
+# -------------------------------
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
 
+# -------------------------------
 # LangChain ecosystem
+# -------------------------------
 langchain==0.3.7
 langchain-core>=0.3.17,<0.4.0
 langchain-community==0.3.7
 langchain-google-genai==2.0.2
 langchain-chroma==0.1.4
 
-# Google GenAI - All we need for embeddings + chat!
+# -------------------------------
+# Google GenAI
+# -------------------------------
 google-generativeai>=0.8.0,<0.9.0
 
-# Vector DB - ChromaDB only (lightweight)
+# -------------------------------
+# Vector DB - ChromaDB
+# -------------------------------
 chromadb==0.4.22
 
-
-# ML + Embeddings - Lighter versions for 512MB RAM
+# -------------------------------
+# ML + Embeddings
+# -------------------------------
 sentence-transformers==2.2.2
-transformers==4.35.0
-huggingface-hub>=0.23.0  # Changed from ==0.19.4 to satisfy langchain-huggingface
-tokenizers==0.15.0
+
+# FIXED: upgraded to support tokenizers 0.15.x
+transformers==4.46.1
+
+# Required by latest transformers & Chroma
+tokenizers==0.15.2
+
+huggingface-hub>=0.23.0
 torch==2.0.1
 
-
+# -------------------------------
+# File handling
+# -------------------------------
 PyPDF2==3.0.1
 python-docx==1.1.0
 Pillow==10.2.0
 
+# -------------------------------
 # Utilities
+# -------------------------------
 python-dotenv==1.0.0
 requests==2.31.0
 tqdm==4.66.1
